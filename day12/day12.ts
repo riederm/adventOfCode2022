@@ -107,11 +107,13 @@ for (let y = 0; y < lines.length; y++) {
     }
 }
 
-let candidates = starters.map(it => {
+let i  =0 ;
+let candidates = starters.map(start => {
     visited = new Set();
     // hints = new Map();
     shortest = [];
     walk([start]);
+    console.log(i++, shortest.length)
     return shortest.length-1
-}).filter(it => it !==-1)
+}).filter(it => it !==-1).sort((a,b) => b-a)
 console.log(candidates);

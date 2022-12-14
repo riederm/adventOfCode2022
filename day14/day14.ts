@@ -24,7 +24,43 @@ class Vec {
 
 }
 
-class Map {
+class Field2 {
+    private occupied :Map<string, string> = new Map()
+    constructor(private blockY: number){
+    }
+
+    putRock(x: number, y: number) {
+        this.occupied.set(`${x}.${y}`, "#")
+    }
+
+    putSand(x: number, y: number) {
+        this.occupied.set(`${x}.${y}`, "O")
+    }
+
+    isFree(x: number, y: number): boolean {
+        if (y == this.blockY) return false;
+        return this.isOutside(x,y) || !this.occupied.has(`${x}.${y}`);
+    }
+    
+    isOutside(x:number, y:number):boolean{
+        return false;
+        // return (x < this.minX ||  x > this.maxX || y > this.maxY || y < this.minY);
+
+    }
+
+    delete(x:number, y:number){
+        this.occupied.delete(`${x}.${y}`)
+        //this.field[y - this.minY][x - this.minX] = ".";
+    }
+
+    print() {
+        // for (const l of this.field) {
+        //     console.log(l.join(""))
+        // }
+    }
+}
+
+class Field {
     field: string[][] = [];
     constructor(private minX: number, private maxX: number, private minY: number, private maxY: number, private blockY : number) {
         for (let i = 0; i <= maxY - minY; i++) {
@@ -84,7 +120,8 @@ let [maxY, minY] = [max(flatten(rocksY)), min(flatten(rocksY))];
 minY = 0;
 console.log(maxY, minY);
 
-let map = new Map(0 as number, maxX as number + 500,   minY as number, maxY as number, (maxY as number)+2);
+let map = new Field2((maxY as number) + 2);
+// let map = new Field(0 as number, maxX as number + 500,   minY as number, maxY as number, (maxY as number)+2);
 for (const line of rocks) {
     let start = new Vec(line[0][0], line[0][1]);
     for (let i = 1; i < line.length; i++) {
@@ -141,6 +178,9 @@ while(!map.isOutside(sand.x, sand.y)){
     if (!map.isOutside(sand.x, sand.y)){
         map.putSand(sand.x, sand.y);
         count++;
+    }
+    if (count % 1000 == 0){
+        console.log(count);
     }
     // console.log();
     

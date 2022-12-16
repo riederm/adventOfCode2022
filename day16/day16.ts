@@ -80,4 +80,42 @@ function walk(pos: string, pressure: number, remainingMinutes: number, visited: 
 }
 max = -1;
 walk("AA", 0, 30, new Set());
-console.log(max);
+console.log("a)", max);
+
+function walk2(pos1: string, pos2: string, pressure: number, remainingMinutes1: number, remainingMinutes2: number, visited: Set<string>) {
+    if (remainingMinutes1 <= 0 && remainingMinutes2 <= 0) {
+        return pressure;
+    }
+
+    let m = max;
+    pressure += flowRates.get(pos1) * remainingMinutes1; //we just opened it, it will flow from next minute on
+    m = Math.max(max, pressure);
+    pressure += flowRates.get(pos2) * remainingMinutes2; //we just opened it, it will flow from next minute on
+    m = Math.max(max, pressure);
+    if (m > max){
+        max = m;
+        console.log(m);
+    }
+
+    let neighbous1 = edges.get(pos1).filter(it => !visited.has(it.target))
+        .filter(it => flowRates.get(it.target) > 0)
+        .filter(_=> remainingMinutes1 > 0);
+
+    for (const n1 of neighbous1) {
+        visited.add(n1.target);
+        let neighbous2 = edges.get(pos2).filter(it => !visited.has(it.target))
+            .filter(it => flowRates.get(it.target) > 0)
+            .filter(_=> remainingMinutes2 > 0);
+        for (const n2 of neighbous2) {
+
+            visited.add(n2.target);
+            walk2(n1.target, n2.target, pressure, remainingMinutes1 - (n1.cost + 1), remainingMinutes2 - (n2.cost +1), visited);
+            visited.delete(n2.target);
+        }
+        visited.delete(n1.target);
+    }
+}
+
+walk2("AA","AA", 0, 26, 26, new Set());
+// this will not end ... try the solution after it settles down for a minute or two
+console.log("b)", max);

@@ -1,13 +1,32 @@
 import assert from 'assert';
 import * as fs from 'fs';
+import { type } from 'os';
+import { resourceUsage } from 'process';
 import { stringify } from 'querystring';
 
-let lines = fs.readFileSync('input.test.txt').toString()
+let lines = fs.readFileSync('input.txt').toString()
     .split("\n")
 
+enum Resource {
+    None = 0,
+    ore,
+    clay,
+    obsidian,
+    geode
+};
+
+const RESOURCES = [Resource.None, Resource.ore, Resource.clay, Resource.obsidian, Resource.geode];
+
+function emptyResources(): number [] {
+    return [0,0,0,0,0];
+}
+
+function resName(res: Resource) : string {
+    return Resource[res];
+}
 
 class BluePrint {
-    constructor(public id: number, public robots: Map<string, Map<string, number>>) {
+    constructor(public id: number, public robotCosts: Map<Resource, number[]>) {
     }
 }
 
@@ -15,138 +34,87 @@ let blueprints = lines.map((l) => {
     let id = +/Blueprint (\d+):/gm.exec(l)[1];
     let regex = /Each (\w+) robot costs (\d+) (\w+)( and (\d+) (\w+))?./gm;
     var robot;
-    let costs: Map<string, Map<string, number>> = new Map();
-    do {
-        robot = regex.exec(l);
+    let costsPerRobot = new Map<Resource, number[]>();
+    do {robot = regex.exec(l);
         if (robot) {
-            let costsPerOre = new Map<string, number>();
-            costsPerOre.set(robot[3], +robot[2]);
-            costs.set(robot[1], costsPerOre);
+            let costs = emptyResources();
+            costs[Resource[robot[3]]] = +robot[2];
             if (robot[4]) {
-                costsPerOre.set(robot[6], +robot[5]);
+                costs[Resource[robot[6]]] = +robot[5];
             }
-
+            costsPerRobot.set(Resource[''+robot[1]], costs);
         }
     } while (robot)
-    return new BluePrint(id, costs);
+    costsPerRobot.set(Resource.None, [0,0,0,0,0])
+    return new BluePrint(id, costsPerRobot);
 })
 
 blueprints.forEach(bp => {
-    console.log(bp.id, bp.robots);
+    let robotLines = Array.from(bp.robotCosts.entries()).map(([res, costs]) =>
+        `   Robot ${resName(res)}: ${costs}`).join("\n");
+    console.log(bp.id, "\n", robotLines);
+});
 
+let mm = -1;
+function test(bp: BluePrint, remainingMinutes: number, resources: number[], robots: number[], maxRobots: number[], seen: Map<string, number>) {
+    if(remainingMinutes == 0) {
+        if (resources[Resource.geode] > mm) {
+            mm = resources[Resource.geode];
+            // console.log(mm, robots);
+        }
+        return resources[Resource.geode];
+    }
+    let key = resources.join(",") + robots.join(",") + remainingMinutes;
+    if (seen.has(key)){
+        return seen.get(key);
+    }
+
+    let buildOptions = Array.from(bp.robotCosts)
+        .filter(([resource, costs]) => costs.every((c,i) => c <= resources[i]))
+        .map(([r, _]) => r);
+
+    let maxGeodes = -1;
+    for (const nextRobot of buildOptions) {
+        if ((nextRobot == Resource.ore || nextRobot == Resource.clay) && remainingMinutes < 6) {    //heuristic!?!
+            continue;
+        }
+
+        if (robots[nextRobot] < maxRobots[nextRobot]){
+
+            //farm the current round
+            let _resources = [...resources]; //copy
+            robots.forEach((amount, i) => _resources[i] += amount);
+            
+            //build the next robot
+            bp.robotCosts.get(nextRobot).forEach((cost, idx) => _resources[idx] -= cost)
+            let _robots = [...robots]; //copy
+            _robots[nextRobot]++;
+            
+            let curr = test(bp, remainingMinutes-1, _resources, _robots, maxRobots, seen);
+            seen.set(key, curr);
+            if (curr > maxGeodes){
+                maxGeodes = curr;
+            }
+        }
+    }
+    return maxGeodes;
+}
+
+let bp = blueprints[0];
+let sum = 0;
+blueprints.forEach(bp => {
+    mm = -1;
+    let maxRobots : number[] = [];
+    for (const R of RESOURCES) {
+        let max = Math.max(...Array.from(bp.robotCosts.values()).map(n => n[R]));
+        maxRobots.push(max);
+    }
+    maxRobots[Resource.None] = 999;
+    maxRobots[Resource.geode] = 999;
+
+    let res = test(bp, 24, [0,0,0,0,0], [0,1,0,0,0], maxRobots, new Map())
+    console.log("BP", bp.id, res);
+    sum = sum + bp.id * res;
 })
 
-function getPossibleBuilds(bp: BluePrint, res: Map<string, number>): string[] {
-    let builds: string[] = [];
-
-    builds.push(undefined); //build nothing
-    for (const [targetOre, robot] of Array.from(bp.robots.entries()).reverse()) {
-        if (Array.from(robot.entries()).every(([ore, costs]) => (res.get(ore) ?? 0) >= costs)) {
-            builds.push(targetOre);
-        }
-    }
-    return builds.reverse();
-}
-
-function farm(res: Map<string, number>, robots: Map<string, number>) {
-    for (const [oreType, amount] of robots.entries()) {
-        res.set(oreType, (res.get(oreType) ?? 0) + amount);
-    }
-}
-
-function payForConstruction(bp: BluePrint, res: Map<string, number>, robots: Map<string, number>, type: string) {
-    let costs = bp.robots.get(type);
-    for (const [ore, amount] of costs.entries()) {
-        let newAmount = res.get(ore) - amount;
-        if (newAmount < 0) {
-            console.log("illegal amount")
-        }
-        res.set(ore, newAmount)
-    }
-}
-
-let m = -1;
-function testBluePrint(bp: BluePrint, res: Map<string, number>, robots: Map<string, number>, remainingMinutes: number,
-    pendingBuild: string): number {
-    if (remainingMinutes <= 0) {
-        let x = res.get("geode") ?? 0;
-        if (x > m) {
-            m = x;
-            console.log(m);
-        }
-        return x;
-    }
-
-    let innerMax = -1;
-    let possBuilds = getPossibleBuilds(bp, res);
-
-    for (const nextBuild of possBuilds) {
-        console.log(remainingMinutes, possBuilds);
-        
-        if (remainingMinutes + (res.get("geode") ?? 0) < m) {
-            console.log("skip", m);
-            continue;
-        }
-        let newRes = new Map(res);
-        let newRobots = new Map(robots);
-        //collect resources
-        farm(newRes, newRobots);
-        //perform pending build
-        if (pendingBuild) {
-            newRobots.set(pendingBuild, (newRobots.get(pendingBuild) ?? 0) + 1);
-        }
-        if (nextBuild) {
-            payForConstruction(bp, newRes, newRobots, nextBuild);
-        }
-        innerMax = Math.max(innerMax, testBluePrint(bp, newRes, newRobots, remainingMinutes - 1, nextBuild));
-    }
-    return innerMax;
-}
-
-function testBFS(bp: BluePrint, res: Map<string, number>, robots: Map<string, number>, remainingMinutes: number,
-    pendingBuild: string) {
-
-    let q: [Map<string, number>, Map<string, number>, number, string, number][] = [[new Map(res), new Map(robots), remainingMinutes, undefined, 0]];
-    let i = 0;
-    while (q.length > 0) {
-        let [res, robots, remainingMinutes, pendingBuild, lvl] = q.shift();
-        if (i++ % 10000 == 0) {
-            console.log(lvl, res, robots);
-        }
-        let x = res.get("geode") ?? 0;
-        if (x > m) {
-            m = x;
-            console.log(m);
-        }
-
-        if (remainingMinutes == 0) {
-            continue;
-        }
-
-        let possBuilds = getPossibleBuilds(bp, res);
-        for (const nextBuild of possBuilds) {
-            if (remainingMinutes + (res.get("geode") ?? 0) < m) {
-                console.log("skip", m);
-                continue;
-            }
-            let newRes = new Map(res);
-            let newRobots = new Map(robots);
-            //collect resources
-            farm(newRes, newRobots);
-            //perform pending build
-            if (pendingBuild) {
-                newRobots.set(pendingBuild, (newRobots.get(pendingBuild) ?? 0) + 1);
-            }
-            if (nextBuild) {
-                payForConstruction(bp, newRes, newRobots, nextBuild);
-            }
-
-            q.push([newRes, newRobots, remainingMinutes - 1, nextBuild, lvl + 1]);
-        }
-    }
-}
-
-for (const bp of blueprints) {    //todo reverse
-    m = -1;
-    console.log(bp.id, testBluePrint(bp, new Map(), new Map([["ore", 1]]), 24, undefined));
-}
+console.log("expected", 1958, "actual", sum);

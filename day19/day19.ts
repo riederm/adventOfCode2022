@@ -1,5 +1,6 @@
 import assert from 'assert';
 import * as fs from 'fs';
+import { stringify } from 'querystring';
 
 let lines = fs.readFileSync('input.test.txt').toString()
     .split("\n")
@@ -38,13 +39,13 @@ blueprints.forEach(bp => {
 function getPossibleBuilds(bp: BluePrint, res: Map<string, number>): string[] {
     let builds: string[] = [];
 
-    for (const [targetOre, robot] of bp.robots.entries()) {
+    builds.push(undefined); //build nothing
+    for (const [targetOre, robot] of Array.from(bp.robots.entries()).reverse()) {
         if (Array.from(robot.entries()).every(([ore, costs]) => (res.get(ore) ?? 0) >= costs)) {
             builds.push(targetOre);
         }
     }
-    builds.push(undefined); //build nothing
-    return builds;
+    return builds.reverse();
 }
 
 function farm(res: Map<string, number>, robots: Map<string, number>) {
@@ -53,11 +54,11 @@ function farm(res: Map<string, number>, robots: Map<string, number>) {
     }
 }
 
-function construct(bp: BluePrint, res: Map<string, number>, robots: Map<string, number>, type: string) {
+function payForConstruction(bp: BluePrint, res: Map<string, number>, robots: Map<string, number>, type: string) {
     let costs = bp.robots.get(type);
     for (const [ore, amount] of costs.entries()) {
         let newAmount = res.get(ore) - amount;
-        if (newAmount < 0){
+        if (newAmount < 0) {
             console.log("illegal amount")
         }
         res.set(ore, newAmount)
@@ -65,10 +66,10 @@ function construct(bp: BluePrint, res: Map<string, number>, robots: Map<string, 
 }
 
 let m = -1;
-function testBluePrint(bp: BluePrint, res: Map<string, number>, robots: Map<string, number>, remainingMinutes: number, 
+function testBluePrint(bp: BluePrint, res: Map<string, number>, robots: Map<string, number>, remainingMinutes: number,
     pendingBuild: string): number {
     if (remainingMinutes <= 0) {
-        let x = res.get("geode")?? 0;
+        let x = res.get("geode") ?? 0;
         if (x > m) {
             m = x;
             console.log(m);
@@ -77,27 +78,75 @@ function testBluePrint(bp: BluePrint, res: Map<string, number>, robots: Map<stri
     }
 
     let innerMax = -1;
-    for (const nextBuild of getPossibleBuilds(bp, res)) {
-        if (remainingMinutes + (res.get("geode")??0) < m){
-            console.log("skip");
-            
+    let possBuilds = getPossibleBuilds(bp, res);
+
+    for (const nextBuild of possBuilds) {
+        console.log(remainingMinutes, possBuilds);
+        
+        if (remainingMinutes + (res.get("geode") ?? 0) < m) {
+            console.log("skip", m);
             continue;
         }
+        let newRes = new Map(res);
+        let newRobots = new Map(robots);
         //collect resources
-        farm(res, robots);
+        farm(newRes, newRobots);
         //perform pending build
-        if (pendingBuild){
-            robots.set(pendingBuild, (robots.get(pendingBuild)??0)+1);
+        if (pendingBuild) {
+            newRobots.set(pendingBuild, (newRobots.get(pendingBuild) ?? 0) + 1);
         }
-        if (nextBuild){
-            construct(bp, res, robots, nextBuild);
+        if (nextBuild) {
+            payForConstruction(bp, newRes, newRobots, nextBuild);
         }
-        innerMax = Math.max(innerMax, testBluePrint(bp, new Map(res), new Map(robots), remainingMinutes-1, nextBuild));
+        innerMax = Math.max(innerMax, testBluePrint(bp, newRes, newRobots, remainingMinutes - 1, nextBuild));
     }
     return innerMax;
 }
 
+function testBFS(bp: BluePrint, res: Map<string, number>, robots: Map<string, number>, remainingMinutes: number,
+    pendingBuild: string) {
+
+    let q: [Map<string, number>, Map<string, number>, number, string, number][] = [[new Map(res), new Map(robots), remainingMinutes, undefined, 0]];
+    let i = 0;
+    while (q.length > 0) {
+        let [res, robots, remainingMinutes, pendingBuild, lvl] = q.shift();
+        if (i++ % 10000 == 0) {
+            console.log(lvl, res, robots);
+        }
+        let x = res.get("geode") ?? 0;
+        if (x > m) {
+            m = x;
+            console.log(m);
+        }
+
+        if (remainingMinutes == 0) {
+            continue;
+        }
+
+        let possBuilds = getPossibleBuilds(bp, res);
+        for (const nextBuild of possBuilds) {
+            if (remainingMinutes + (res.get("geode") ?? 0) < m) {
+                console.log("skip", m);
+                continue;
+            }
+            let newRes = new Map(res);
+            let newRobots = new Map(robots);
+            //collect resources
+            farm(newRes, newRobots);
+            //perform pending build
+            if (pendingBuild) {
+                newRobots.set(pendingBuild, (newRobots.get(pendingBuild) ?? 0) + 1);
+            }
+            if (nextBuild) {
+                payForConstruction(bp, newRes, newRobots, nextBuild);
+            }
+
+            q.push([newRes, newRobots, remainingMinutes - 1, nextBuild, lvl + 1]);
+        }
+    }
+}
+
 for (const bp of blueprints) {    //todo reverse
     m = -1;
-    console.log(testBluePrint(bp, new Map(), new Map([["ore", 1]]), 24, undefined));
+    console.log(bp.id, testBluePrint(bp, new Map(), new Map([["ore", 1]]), 24, undefined));
 }

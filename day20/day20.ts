@@ -1,6 +1,5 @@
 
 import * as fs from 'fs';
-import { urlToHttpOptions } from 'url';
 
 let arr = fs
     .readFileSync('input.test.txt').toString()
